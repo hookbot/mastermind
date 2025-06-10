@@ -24,18 +24,19 @@ export default function SettingsPage() {
          sx={{ background: "#181818" }}
       >
          <Paper
-            elevation={3}
+            // elevation={3}
             sx={{
                p: 4,
                borderRadius: 3,
                minWidth: 380,
+               background: "#181818",
                boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
             }}
          >
-            <Typography variant="h4" fontWeight={700} align="center" gutterBottom>
+            <Typography variant="h1" fontWeight={700} align="center" gutterBottom>
                Settings
             </Typography>
-            <Stack spacing={3}>
+            <Stack spacing={5} my={10}>
                <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography>Number of Colors</Typography>
                   <TextField

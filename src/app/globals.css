@@ -2,6 +2,8 @@
    --background: #ffffff;
    --foreground: #171717;
    --background-dark: #18181b;
+   --cta-red: #e53935;
+   --cta-red-hover: #b71c1c;
    font-family: var(--font-lora), serif;
 }
 
@@ -56,7 +58,7 @@ a {
 .MuiOutlinedInput-input {
    color: white !important;
    border-color: #444 !important;
-   background-color: #232323 !important;
+   /* background-color: #171717 !important; */
 }
 
 .MuiOutlinedInput-notchedOutline {

@@ -209,8 +209,11 @@ export default function GamePage() {
    return (
       <Box sx={{ background: "#181818", minHeight: "100svh", py: 6 }}>
          <Stack spacing={4} alignItems="center" maxWidth={600} mx={"auto"} px={2}>
-            <Typography variant="h4" sx={{ color: "white", fontWeight: 700, mb: 2 }}>
-               Mastermind
+            <Typography
+               variant="h4"
+               sx={{ color: "white", fontWeight: 700, mb: 2, letterSpacing: -2 }}
+            >
+               MASTERMIND
             </Typography>
             {error && <Typography color="error.main">{error}</Typography>}
             <Stack spacing={2} width="100%">
