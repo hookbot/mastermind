@@ -80,7 +80,7 @@ export default function SettingsPage() {
                                  allowDuplicates: e.target.checked,
                               })
                            }
-                           color="error"
+                           // color="error"
                         />
                      }
                      label=""
@@ -90,7 +90,7 @@ export default function SettingsPage() {
             </Stack>
             <Button
                variant="contained"
-               color="error"
+               // color="error"
                size="large"
                fullWidth
                sx={{ mt: 5, fontSize: 20, height: 56 }}

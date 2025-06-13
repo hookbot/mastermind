@@ -4,6 +4,7 @@
    --background-dark: #18181b;
    --cta-red: #e53935;
    --cta-red-hover: #b71c1c;
+
    font-family: var(--font-lora), serif;
 }
 
@@ -87,4 +88,40 @@ select,
 .MuiOutlinedInput-root,
 .MuiOutlinedInput-input {
    font-family: var(--font-lora), serif !important;
+}
+
+/* MUI Button: use CTA red for all contained/filled buttons */
+.MuiButton-contained,
+.MuiButton-containedPrimary,
+.MuiButton-containedSecondary {
+   background-color: var(--cta-red) !important;
+   color: white !important;
+   box-shadow: none !important;
+}
+.MuiButton-contained:hover,
+.MuiButton-containedPrimary:hover,
+.MuiButton-containedSecondary:hover {
+   background-color: var(--cta-red-hover) !important;
+}
+
+/* MUI Switch: use CTA red for checked state */
+.MuiSwitch-switchBase.Mui-checked {
+   color: var(--cta-red) !important;
+}
+.MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track {
+   background-color: var(--cta-red) !important;
+}
+
+/* MUI Checkbox and Radio: use CTA red for checked state */
+.MuiCheckbox-root.Mui-checked,
+.MuiRadio-root.Mui-checked {
+   color: var(--cta-red) !important;
+}
+
+/* MUI TextField (focus/active border) */
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+   border-color: var(--cta-red) !important;
+}
+.MuiInputLabel-root.Mui-focused {
+   color: var(--cta-red) !important;
 }
