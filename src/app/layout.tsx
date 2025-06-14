@@ -21,7 +21,7 @@ const lora = Lora({
 });
 
 export const metadata: Metadata = {
-   title: "Mastermind",
+   title: "MasterMind",
    description: "A classic code-breaking game",
 };
 
