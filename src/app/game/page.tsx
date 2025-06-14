@@ -42,7 +42,7 @@ const colorPalette = [
    "#ffd600", // Gold
 ];
 
-const API_BASE = "http://localhost:3001"; // Change to your backend URL/port
+const API_BASE = "https://api.r.cx/api/mm"; // Change to your backend URL/port
 
 function range(n: number) {
    return Array.from({ length: n }, (_, i) => i);
@@ -58,12 +58,6 @@ const getCircleSize = (numPegs: number) => {
    if (numPegs <= 6) return 36;
    if (numPegs <= 8) return 32;
    return 28;
-};
-const getRowPaddingX = (numPegs: number) => {
-   if (numPegs <= 4) return 8;
-   if (numPegs <= 6) return 4;
-   if (numPegs <= 8) return 2;
-   return 0;
 };
 
 export default function GamePage() {
@@ -87,9 +81,9 @@ export default function GamePage() {
          setLoading(true);
          setError(null);
          try {
-            const startRes = await fetch(`${API_BASE}/start`, { method: "POST" });
+            const startRes = await fetch(`${API_BASE}_start`, { method: "POST" });
             const { session } = await startRes.json();
-            const genRes = await fetch(`${API_BASE}/gen`, {
+            const genRes = await fetch(`${API_BASE}_gen`, {
                method: "POST",
                headers: { "Content-Type": "application/json" },
                body: JSON.stringify({
@@ -113,6 +107,7 @@ export default function GamePage() {
             setFeedback([]);
             setGameStatus("playing");
             setSolution(null);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
          } catch (e: any) {
             setError(e.message || "Failed to start game");
          } finally {
@@ -150,7 +145,7 @@ export default function GamePage() {
       setError(null);
       try {
          const guessStr = guess.map((idx) => getColorLetter(idx!)).join("");
-         const res = await fetch(`${API_BASE}/judge`, {
+         const res = await fetch(`${API_BASE}_judge`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session: game.sessionId, board: guessStr }),
@@ -170,6 +165,7 @@ export default function GamePage() {
             setSolution(data.solution || null);
          }
          setGuess(Array(settings.numPegs).fill(null));
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
          setError(e.message || "Failed to submit guess");
       } finally {
@@ -204,7 +200,6 @@ export default function GamePage() {
    };
 
    const circleSize = getCircleSize(settings.numPegs);
-   const rowPaddingX = getRowPaddingX(settings.numPegs);
 
    return (
       <Box sx={{ background: "#181818", minHeight: "100svh", py: 6 }}>
