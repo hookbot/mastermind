@@ -93,8 +93,8 @@ export default function GamePage() {
                   dups: settings.allowDuplicates ? 1 : 0,
                }),
             });
-            const { ok } = await genRes.json();
-            if (!ok) throw new Error("Failed to generate board");
+            const { success } = await genRes.json();
+            if (!success) throw new Error("Failed to generate board");
             setGame({
                sessionId: session,
                guesses: [],
