@@ -22,16 +22,15 @@
 
 @media (prefers-color-scheme: dark) {
    .page {
-      --gray-rgb: 255, 255, 255;
-      --gray-alpha-200: rgba(var(--gray-rgb), 0.145);
-      --gray-alpha-100: rgba(var(--gray-rgb), 0.06);
-
-      --cta-red: #ff5252;
-      --cta-red-hover: #ff1744;
-      --button-primary-hover: var(--cta-red-hover);
-      --button-secondary-hover: #1a1a1a;
       background: #181818;
-      color: #fff;
+      color: #ededed;
+   }
+}
+
+@media (prefers-color-scheme: light) {
+   .page {
+      background: #e3e3e3;
+      color: #121212;
    }
 }
 
@@ -183,7 +182,7 @@ a.secondary {
 
 .cta-icon-btn {
    background: var(--cta-red);
-   color: #fff;
+   color: #ffffff;
    border: none;
    border-radius: 50%;
    width: 120px;

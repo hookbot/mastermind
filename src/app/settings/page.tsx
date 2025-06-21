@@ -21,7 +21,7 @@ export default function SettingsPage() {
          justifyContent="center"
          alignItems="center"
          minHeight="100svh"
-         sx={{ background: "#181818" }}
+         sx={{ background: "var(--background)" }}
       >
          <Paper
             // elevation={3}
@@ -29,7 +29,7 @@ export default function SettingsPage() {
                p: 4,
                borderRadius: 3,
                minWidth: 380,
-               background: "#181818",
+               background: "var(--background)",
                boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
             }}
          >

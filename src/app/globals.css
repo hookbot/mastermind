@@ -1,10 +1,8 @@
 :root {
-   --background: #ffffff;
-   --foreground: #171717;
-   --background-dark: #18181b;
-   --cta-red: #e53935;
+   --background: #cccccc;
+   --foreground: #333333;
+   --cta-red: #e53535;
    --cta-red-hover: #b71c1c;
-
    font-family: var(--font-lora), serif;
 }
 
@@ -12,6 +10,13 @@
    :root {
       --background: #0a0a0a;
       --foreground: #ededed;
+   }
+}
+
+@media (prefers-color-scheme: light) {
+   :root {
+      --background: #ececec;
+      --foreground: #0b0b0b;
    }
 }
 
@@ -28,8 +33,7 @@ body,
 
 body {
    color: var(--foreground);
-
-   background: var(--background-dark) !important;
+   background: var(--background) !important;
    font-family: var(--font-lora), serif;
    -webkit-font-smoothing: antialiased;
    -moz-osx-font-smoothing: grayscale;
@@ -42,14 +46,8 @@ body {
 }
 
 a {
-   color: inherit;
+   color: #999999;
    text-decoration: none;
-}
-
-@media (prefers-color-scheme: dark) {
-   html {
-      color-scheme: dark;
-   }
 }
 
 .MuiPaper-root,
@@ -57,17 +55,16 @@ a {
 .MuiInputBase-input,
 .MuiOutlinedInput-root,
 .MuiOutlinedInput-input {
-   color: white !important;
-   border-color: #444 !important;
-   /* background-color: #171717 !important; */
+   color: var(--foreground) !important;
+   border-color: var(--foreground) !important;
 }
 
 .MuiOutlinedInput-notchedOutline {
-   border-color: #444 !important;
+   border-color: var(--foreground) !important;
 }
 
 .MuiInputLabel-root {
-   color: white !important;
+   color: var(--foreground) !important;
 }
 
 body,

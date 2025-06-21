@@ -202,7 +202,7 @@ export default function GamePage() {
    const circleSize = getCircleSize(settings.numPegs);
 
    return (
-      <Box sx={{ background: "#181818", minHeight: "100svh", py: 6 }}>
+      <Box sx={{ background: "var(--background)", minHeight: "100svh", py: 6 }}>
          <Stack spacing={4} alignItems="center" maxWidth={600} mx={"auto"} px={2}>
             <Typography
                variant="h4"
@@ -219,7 +219,7 @@ export default function GamePage() {
                      alignItems="center"
                      justifyContent="flex-start"
                      sx={{
-                        background: "#232326",
+                        background: "#444444",
                         borderRadius: 2,
                         // px: rowPaddingX,
                         py: 1,
@@ -249,7 +249,7 @@ export default function GamePage() {
                      alignItems="center"
                      justifyContent="flex-start"
                      sx={{
-                        background: "#232326",
+                        background: "var(--background)",
                         borderRadius: 2,
                         px: 2,
                         py: 1,
