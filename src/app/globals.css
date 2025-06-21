@@ -26,7 +26,6 @@ body {
    overflow-x: hidden;
 }
 
-body,
 .MuiTypography-root {
    color: var(--foreground) !important;
 }
@@ -48,6 +47,11 @@ body {
 a {
    color: #999999;
    text-decoration: none;
+}
+
+ul {
+   color: #333333;
+   background: white;
 }
 
 .MuiPaper-root,
