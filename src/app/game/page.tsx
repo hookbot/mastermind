@@ -42,7 +42,7 @@ const colorPalette = [
    "#ffd600", // Gold
 ];
 
-const API_BASE = "https://mm.r.cx/api/mm"; // Change to your backend URL/port
+const API_BASE = "https://api.r.cx/api/mm"; // Change to your backend URL/port
 
 function range(n: number) {
    return Array.from({ length: n }, (_, i) => i);
