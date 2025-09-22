@@ -9,16 +9,16 @@ CHEEZ := $(shell echo $(REBUILD) | xargs -n1 bin/md5sync --lazy --verbose --gene
 all: $(REBUILT)
 
 node_modules: package.json $(NPM)
-	npm install
+	$(NPM) install
 	touch $@/.
 
 $(REBUILT): node_modules $(REBUILD)
-	npm run build
+	$(NPM) run build
 	@[ -e $@ ] && touch $@
 
 start: $(REBUILT)
 	@echo Starting server ...
-	PORT=$(PORT) npm run dev </dev/null 1>>console.log 2>>console.err &
+	PORT=$(PORT) $(NPM) run dev </dev/null 1>>console.log 2>>console.err &
 
 stop:
 	@echo Stopping NodeJS ...
