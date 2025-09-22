@@ -1,0 +1,515 @@
+#!/usr/bin/perl
+
+# Program: md5sync
+# Purpose: Quickly synchronize large directory structures using MD5 caches.
+# $Id: md5sync,v 1.30 2013/08/15 20:43:01 hookbot Exp $
+
+use strict;
+use warnings;
+use Getopt::Long qw(GetOptions);
+use File::Path qw(rmtree);
+use IO::File;
+use POSIX;
+use Digest::MD5;
+
+sub usage {
+    if (@_) {
+        warn join("",@_,"\n");
+        sleep 2;
+    }
+    die <<USAGE
+Usage> $0 [options] source [ destination ]
+
+source      A local directory or remote URL like http://remotesite/folder/ intended to copy files from.
+destination A local directory of where to synchronize files to.
+--verbose   Show what changes are being made. Use twice for more verbosity to show additional processing details.
+--dryrun    Enable dyrun mode. Do not actually make any modifications to source or destination.
+--generate  Ensure sync cache files in the local source directory are regenerated properly.
+--remove    Just remove files from destination that do not match the source. Do not copy the actual file contents.
+--keep      Keep extraneous files in the destination even if they do not exist in the source.
+--ignore    This option may be specified multiple times.
+            Ignore file or directory from being added to the sync file.
+            Ignore file or directory from being removed if not on the source, even if the --keep option is specified.
+            Ignore file or directory from being removed if not matched with the source, even with the --remove option.
+--lazy      Quickly compare to see if anything new has changed on the source since the last full synchronization.
+            Without this option, all the files are scanned in order to compute the MD5, which can be slow.
+            This option just assumes the previous MD5 for the file if the mtime is the same.
+            This --lazy option is the most efficient mode for updating source changes to the destination.
+            Note that this option may NOT catch those cases where files are accidentally changed on the destination.
+--file=FILE Choose sync file name. Default is "..." if not specified.
+--sourcehost=HOST Override the host in the URL with string.
+            Default is to use whatever is after the protocol, i.e., http://HOST
+
+USAGE
+}
+
+my $v       = 0;
+my $dryrun  = undef;
+my $gen     = undef;
+my $remove  = undef;
+my $keep    = undef;
+my $lazy    = undef;
+my @ignore  = ();
+my $file    = "...";
+my $host    = undef;
+
+GetOptions
+    dryrun    => \$dryrun,
+    generate  => \$gen,
+    remove    => \$remove,
+    keep      => \$keep,
+    lazy      => \$lazy,
+    "ignore=s"=> \@ignore,
+    "file:s"  => \$file,
+    "sourcehost=s"=> \$host,
+    "verbose+"=> \$v,
+    or usage();
+
+$v = 1 if !$v && $dryrun; # Force minimum verbose mode if dryrun mode is enabled
+
+my $src = shift or usage("Source must be specified!");
+$src =~ m{^\w+://} || -d $src or usage("$src: Not a directory");
+# Strip off the cache file if accidentally supplied.
+$src =~ s{(?:/(?:\.|\Q$file\E|))+$}{};
+my $dst = shift;
+if ($dst and !-d $dst and !mkdir($dst, 0755)) {
+    usage("$dst: Unable to create directory: $!");
+}
+
+$gen || $dst or usage("You must choose at least one of --generate or choose a destination to update");
+
+if ($remove && !$dst) {
+    usage("You must specify a destination to --remove files from!");
+}
+
+if ($keep && !$lazy) {
+    usage("You need to enable --lazy mode in order to use --keep option");
+}
+
+if ($remove && !$lazy) {
+    usage("You need to enable --lazy mode in order to use --remove option");
+}
+
+my %ignore = map { $_ => 1 } @ignore;
+
+if ($gen) {
+    # Make sure the source is ready to go
+    regenerate($src);
+}
+
+my $ua = undef;
+sub browser {
+    return $ua ||= eval {
+        require LWP::UserAgent;
+        my $browser = LWP::UserAgent->new;
+        eval { $browser->ssl_opts( verify_hostname => 0); };
+        $browser->timeout(10);
+        return $browser;
+    };
+}
+
+if ($dst) {
+    # Strip off the cache file if accidentally supplied.
+    $dst =~ s{(?:/(?:\.|\Q$file\E|))+$}{};
+    die "$dst: Destination must be on the local file system" if $dst =~ m{^\w+://};
+    if (!$lazy) {
+        # Make sure the cache files match up on the destination side
+        regenerate($dst);
+    }
+    sync($src,$dst);
+}
+
+# Create cache file (such as "...")
+# f:mtime:mode:size:md5:filename
+# d:mtime:mode:used:md5:dirname
+# s:symlink->destination
+sub regenerate {
+    my $dir = shift or die "Must specify directory to regenerate";
+    warn localtime().": $dir: Scanning now.\n" if $v>1;
+    -d $dir or die "$dir: Not a directory!";
+    opendir my $fh, $dir or usage "$dir: Unable to open: $!";
+    my $latest_mtime = 0;
+    my @nodes = ();
+    while (defined(my $name = readdir $fh)) {
+        next if $name =~ /^\.\.?$/; # Ignore forced link nodes
+        next if $name eq $file; # Ignore cache file if already exists
+        next if $ignore{$name};
+        my $full = "$dir/$name";
+        my @stat = lstat $full or next;
+        my $is_symlink = -l _;
+        my $is_dir = -d _;
+        my $is_file = -f _;
+        if (!$is_symlink && !$is_dir && !$is_file) {
+            # Ignore unknown or special files
+            warn localtime().": $full: Ignoring strange type of file...\n" if $v>1;
+            next;
+        }
+        if ($is_dir) {
+            # Always recurse into directories first.
+            regenerate($full);
+            @stat = lstat $full; # Update stat in case it just changed
+        }
+        if ($is_symlink) {
+            # Symlink
+            push @nodes, [ $name, "s", readlink $full ];
+        }
+        else {
+            my $size = $stat[7];
+            if ($is_dir) {
+                my $sum = 0;
+                if (open my $cache, "$full/$file") {
+                    while (<$cache>) {
+                        $sum += $1 if /^[fd]:\d+:\d+:(\d+):/;
+                        $sum += length $1 if /^s:(.+)/;
+                    }
+                    close $cache;
+                    $size = $sum;
+                }
+            }
+            push @nodes, [ $name, ($is_dir ? "d" : "f"), $stat[9], sprintf("%o",$stat[2] & 07777), $size ];
+            $latest_mtime =  $stat[9] if $stat[9] > $latest_mtime;
+        }
+    }
+    closedir $fh;
+    $latest_mtime ||= (stat $dir)[9] || 0;
+    warn localtime().": $dir: Latest node modified ".localtime($latest_mtime)."\n" if $v>1;
+    @nodes = sort {
+        $a->[0] cmp $b->[0];
+    } @nodes;
+    if (!@nodes) {
+        my $out = "$dir/$file";
+        my @stat = lstat $out;
+        if (@stat) {
+            if ($stat[7] || $stat[9] != $latest_mtime) {
+                warn localtime().": $out: Resetting cache file ...\n" if $v;
+                if (!$dryrun) {
+                    IO::File->new($out,"w");
+                    utime($latest_mtime, $latest_mtime, $out);
+                }
+            }
+        }
+        else {
+            warn localtime().": $out: Creating cache file ...\n" if $v;
+            if (!$dryrun) {
+                IO::File->new($out, POSIX::O_CREAT()|POSIX::O_TRUNC());
+                utime($latest_mtime, $latest_mtime, $out);
+            }
+        }
+    }
+    else {
+        my $contents = "";
+        my $out = "$dir/$file";
+        my $old = "";
+        my %lazy_file_cache = ();
+        if ($out) {
+            if (my $io = IO::File->new($out, POSIX::O_RDONLY())) {
+                while (<$io>) {
+                    $old .= $_;
+                    my ($mtime, $mode, $size, $md5, $name);
+                    if ($lazy and ($mtime, $mode, $size, $md5, $name) = /^f:(\d+):(\d+):(\d+):(\w+):(.+)/) {
+                        $lazy_file_cache{$name} = [ $mtime, $mode, $size, $md5 ];
+                    }
+                    elsif ($lazy and ($mtime, $mode, $md5, $name) = /^f:(\d+):(\d+):(\w+):(.+)/) {
+                        # Handle legacy format as last ditch effort
+                        $lazy_file_cache{$name} = [ $mtime, $mode, (-s "$dir/$name"), $md5 ];
+                    }
+                }
+            }
+        }
+        foreach my $node (@nodes) {
+            my ($name, $type, $mtime, $mode, $size) = @{ $node };
+            if ($type eq "s") {
+                warn localtime().": TYPE:$type $name -> $mtime\n" if $v>1;
+                $contents .= "s:$name\->$mtime\n";
+            }
+            else {
+                my $md5 = "";
+                if ($lazy and $type eq "f" and
+                    my $prev = $lazy_file_cache{$name}) {
+                    if ($prev->[0] == $mtime && $prev->[2] == $size) {
+                        # The mtime and size is still the same,
+                        # so just use the same MD5 as before
+                        # since we are in lazy mode.
+                        $md5 = $prev->[3];
+                    }
+                }
+                my $source = $type eq "f" ? "$dir/$name" : "$dir/$name/$file";
+                if (!$md5) {
+                    my $io = IO::File->new($source, POSIX::O_RDONLY());
+                    if (!$io) {
+                        if ($type eq "d" and $dryrun) {
+                            $io = IO::File->new("/dev/null", POSIX::O_RDONLY());
+                        }
+                    }
+                    if (!$io) {
+                        die "$source: Unable to open: $!";
+                    }
+                    my $digest = Digest::MD5->new;
+                    $digest->addfile($io);
+                    $md5 = $digest->hexdigest;
+                }
+                warn localtime().": TYPE:$type MTIME=$mtime MODE=$mode SIZE=$size MD5:$md5 NAME:$source\n" if $v>1;
+                $contents .= "$type:$mtime:$mode:$size:$md5:$name\n";
+            }
+        }
+        if ($old ne $contents) {
+            warn localtime().": $out: Cache requires update ...\n" if $v;
+            #warn localtime().": DEBUG: [$old] != [$contents]\n" if $v;
+            my $mode = $dryrun ? POSIX::O_RDONLY() : POSIX::O_RDWR() | POSIX::O_CREAT();
+            if (my $io = IO::File->new($out, $mode)) {
+                if ($v) {
+                    my $pid = open my $diff, "|-", "diff", "-u", $out, "-";
+                    print $diff $contents;
+                    close $diff;
+                    waitpid($pid, 0);
+                }
+                $io->seek(0,0);
+                if (!$dryrun) {
+                    $io->print($contents);
+                    $io->truncate($io->tell);
+                }
+            }
+            elsif ($dryrun) {
+                warn "$out: Failed to compare old version: $!\n";
+            }
+            else {
+                die "$out: Unable to open: $!";
+            }
+            # $io will close as it leaves scope
+        }
+        if (((stat $out)[9] || 0) != $latest_mtime) {
+            warn localtime().": $out: Updating timestamp for cache ...\n" if $v;
+            if (!$dryrun) {
+                utime($latest_mtime, $latest_mtime, $out);
+            }
+        }
+        if (((stat $dir)[9] || 0) != $latest_mtime) {
+            warn localtime().": $dir: Updating timestamp ...\n" if $v;
+            utime($latest_mtime, $latest_mtime, $dir) unless $dryrun;
+        }
+    }
+    warn localtime().": $dir: Scan complete.\n" if $v>1;
+}
+
+sub slurp {
+    my $src = shift;
+    if ($src =~ m{^\w+://}) {
+        my $b = browser();
+        warn localtime().": DOWNLOADING: $src ...\n" if $v>1;
+        my @headers = $host ? ( Host => $host ) : ();
+        my $r = $b->get($src, @headers) or die "$src: response failed";
+        if ($r->is_success) {
+            return $r->content;
+        }
+        die "$src: REMOTE SOURCE SLURP FAILURE: ".$r->status_line;
+    }
+    open my $fh, "<", $src or die "$src: open: $!";
+    my $content = join "", <$fh>;
+    return $content;
+}
+
+sub sync {
+    my ($src, $dst) = @_;
+    $src or die "sync: Source is required";
+    $dst or die "sync: Destination is required";
+    if (-f $dst and slurp($src) eq slurp($dst)) {
+        # Files match: Kick out of recursion
+        return 1;
+    }
+    if (!-e "$dst/$file") {
+        regenerate($dst);
+    }
+    if (!-f "$dst/$file") {
+        usage("$dst: Failed to create cache file?");
+    }
+    my $goal = slurp("$src/$file");
+    if (-f "$dst/$file" and slurp("$dst/$file") eq $goal) {
+        # Directory and sync files are same: Kick out of recursion
+        return 1;
+    }
+
+    my %save = ();
+    my $latest_mtime = 0;
+    foreach my $node (split /\n/, $goal) {
+        if (my ($source,$link) = $node =~ m{^s:(.+?)->(.+)}) {
+            # s:symlink->destination
+            $save{$source} = 1 unless $keep;
+            next if $ignore{$source};
+            my $dest = "$dst/$source";
+            my $perfect = 0;
+            if (my $curr = readlink $dest) {
+                if ($curr eq $link) {
+                    $perfect = 1;
+                } else {
+                    # Wrong symlink.
+                    warn localtime().": $dest: Wrong symlink ($curr) needs to be wiped.\n" if $v;
+                    unlink $dest unless $dryrun;
+                }
+            } elsif (lstat $dest) {
+                # Something exists but it is wrong
+                if (-d _) {
+                    warn localtime().": $dest: Directory exists instead of a symlink so it needs to be wiped.\n" if $v;
+                    rmtree($dest) unless $dryrun;
+                } else {
+                    warn localtime().": $dest: File exists instead of symlink so it needs to be wiped.\n" if $v;
+                    unlink $dest unless $dryrun;
+                }
+            }
+            if (!$perfect) {
+                warn localtime().": $dest: Creating symlink $dest -> $link\n" if $v;
+                symlink($link, $dest) unless $dryrun;
+            }
+        } elsif (my ($type, $mtime, $mode, $size, $md5, $name) = $node =~ /^([df]):(\d+):(\d+):(\d+):(\w+):(.+)/) {
+            # f:mtime:mode:size:md5:filename
+            # d:mtime:mode:used:md5:dirname
+            $save{$name} = 1 unless $keep;
+            $latest_mtime = $mtime if $mtime > $latest_mtime;
+            next if $ignore{$name};
+            my $full = "$dst/$name";
+            my $path = $type eq "d" ? "$full/$file" : $full;
+            my $needs_update = 0;
+            if (my @stat = lstat $full) {
+                if ($stat[9] != $mtime) {
+                    warn localtime().": $path: Incorrect mtime $stat[9] != $mtime\n" if $v;
+                    $needs_update = 1;
+                } else {
+                    my $curr = sprintf("%o",$stat[2] & 07777);
+                    if ($curr ne $mode) {
+                        warn localtime().": $path: Incorrect chmod $curr != $mode\n" if $v;
+                        $needs_update = 1;
+                    }
+                    elsif ($type eq "f") {
+                        if ($stat[7] != $size) {
+                            warn localtime().": $path: Incorrect file size $stat[7] != $size\n" if $v;
+                            $needs_update = 1;
+                        }
+                    }
+                }
+            } else {
+                warn localtime().": $full: New $type must be created!\n" if $v;
+                next if $remove and $type eq "f";
+                $needs_update = 1;
+            }
+            if ($needs_update || !$lazy || $type eq "d") {
+                if (!lstat($path)) {
+                    # File does not exist, thus the contents must be updated.
+                    $needs_update = 2;
+                }
+                elsif (my $io = IO::File->new($path, "r")) {
+                    # Test MD5
+                    my $curr = undef;
+                    if ($type eq "f" and $lazy and
+                        my $old_md5 = IO::File->new("$dst/$file", "r")) {
+                        # Lazy mode, so just read the old cache file to get the MD5
+                        while (<$old_md5>) {
+                            if (my ($old_mtime, $old_mode, $old_size, $old_md5, $old_name) = /^f:(\d+):(\d+):(\d+):(\w+):(.+)/) {
+                                if ($old_name eq $name and my @o = lstat($path)) {
+                                    if ($old_mtime == $o[9] &&
+                                    $old_size == $o[7]) {
+                                        # Old size and mtime still match cache file,
+                                        # so assume the MD5 is still the same as what it was
+                                        $curr = $old_md5;
+                                        last;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    $curr ||= do {
+                        my $digest = Digest::MD5->new;
+                        $digest->addfile($io);
+                        $digest->hexdigest;
+                    };
+                    if ($curr ne $md5) {
+                        warn localtime().": $path: Incorrect MD5 $curr != $md5\n" if $v;
+                        $needs_update = 2;
+                    }
+                } else {
+                    warn localtime().": $path: Unable to verify md5: $!\n" if $v;
+                    $needs_update = 2;
+                }
+            }
+            if ($needs_update) {
+                if ($type eq "d") {
+                    # Recursively call myself with this sub directory
+                    warn localtime().": $full: Directory is out of sync\n" if $v;
+                    if (!-d $full) {
+                        warn localtime().": $full: Creating directory ...\n" if $v;
+                        mkdir($full, 0755) unless $dryrun;
+                    }
+                    sync("$src/$name", $full);
+                    warn localtime().": $full: Updating directory chmod and mtime...\n" if $v;
+                    if (!$dryrun) {
+                        chmod(oct($mode), $full);
+                        utime($mtime, $mtime, $full, $path);
+                    }
+                } else {
+                    # File that needs to be updated
+                    if (-d $path) {
+                        warn localtime().": $path: Not supposed to be a directory so wiping...\n" if $v;
+                        rmtree $path unless $dryrun;
+                    }
+
+                    if ($needs_update > 1) {
+                        warn localtime().": $path: Removing broken file ...\n" if lstat($path) && $v;
+                        rmtree $path unless $dryrun;
+                        if (!$remove) {
+                            warn localtime().": $path: Updating file contents ...\n" if $v;
+                            if (!$dryrun) {
+                                my $io = IO::File->new($path, "w") or die "$path: open: $!";
+                                if ($size > 1_000_000 and $src =~ m{^/}) {
+                                    # Memory optimization for regular large files
+                                    my $io_src = IO::File->new("$src/$name", "r")
+                                        or die "$src/name: open $!";
+                                    while (read $io_src, my $chunk, 32768) {
+                                        $io->print($chunk);
+                                    }
+                                } else {
+                                    $io->print(slurp("$src/$name"));
+                                }
+                                close($io);
+                            }
+                        }
+                    }
+
+                    warn localtime().": $full: Updating file chmod and mtime...\n" if $v;
+                    if (!$dryrun) {
+                        chmod(oct($mode), $path);
+                        utime($mtime, $mtime, $path);
+                    }
+                }
+            }
+        } elsif ($node =~ /^([df]):(\d+):(\d+):(\w+):(.+)/) {
+            die "$dst/$file: Legacy format no longer supported. At least --lazy --generate to update to new format and try again: $node";
+        } else {
+            die "$dst/$file: Unimplemented node definition: $node";
+        }
+    }
+
+    if (!$keep) {
+        warn localtime().": $dst: Scanning for files that do not exist on the source ...\n" if $v>1;
+        opendir my $fh, $dst or die "$dst: Unable to opendir: $!";
+        while (defined(my $name = readdir $fh)) {
+            next if $name =~ /^\.\.?$/; # Ignore forced link nodes
+            next if $name eq $file; # Never remove the cache file
+            next if $save{$name};
+            next if $ignore{$name};
+            warn localtime().": $dst/$name: Removing node that does not exist on source ...\n" if $v;
+            rmtree("$dst/$name") unless $dryrun;
+        }
+        closedir $fh;
+    }
+
+    warn localtime().": $dst/$file: Updating cache file to match source ...\n" if $v;
+    if (!$dryrun) {
+        my $io = IO::File->new("$dst/$file", "w") || do {
+            unlink "$dst/$file";
+            IO::File->new("$dst/$file", "w");
+        } or die localtime().": $dst/$file: Too difficult to create? Giving up! $!\n";
+        $io->print($goal);
+    }
+    warn localtime().": $dst/$file: Updating timestamp to latest mtime ...\n" if $v;
+    utime($latest_mtime, $latest_mtime, $dst, "$dst/$file") unless $dryrun;
+    return 1;
+}
